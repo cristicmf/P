@@ -1,14 +1,12 @@
 %namespace Microsoft.Pc.Parser
 %using Microsoft.Pc.Domains;
-
-
 %YYSTYPE LexValue
 %visibility internal
 
 %partial
 %importtokens = tokensTokens.dat
 %tokentype PTokens
-%parsertype Parser
+%parsertype PParser
 
 %union {
 	public string str;

@@ -12,7 +12,7 @@
     using Microsoft.Formula.API.Generators;
     using Microsoft.Formula.API.Nodes;
 
-    public enum PProgramTopDecl { Event, EventSet, Interface, Machine, TypeDef, Enum, FunProto, MachineProto };
+    public enum PProgramTopDecl { Event, EventSet, Interface, Machine, TypeDef, Enum, FunProto, MachineProto, Module, Test };
     public class PProgramTopDeclNames
     {
         public HashSet<string> eventNames;
@@ -26,6 +26,7 @@
         public HashSet<string> machineProto;
         public HashSet<string> funProto;
         public HashSet<string> funNames;
+
         public PProgramTopDeclNames()
         {
             eventNames = new HashSet<string>();
@@ -39,6 +40,8 @@
             funProto = new HashSet<string>();
             machineProto = new HashSet<string>();
             funNames = new HashSet<string>();
+            testNames = new HashSet<string>();
+            moduleNames = new HashSet<string>();
 
         }
 
@@ -54,6 +57,8 @@
             funProto.Clear();
             machineProto.Clear();
             funNames.Clear();
+            testNames.Clear();
+            moduleNames.Clear();
         }
     }
 
@@ -108,6 +113,11 @@
         private Stack<P_Root.QualifiedName> groupStack = new Stack<P_Root.QualifiedName>();
         private int nextTrampolineLabel = 0;
         private int nextPayloadVarLabel = 0;
+
+        //module system 
+        private PLink_Root.ModuleDecl crntModuleDecl = null;
+        private Stack<PLink_Root.ModuleExpr> moduleExprStack = new Stack<PLink_Root.ModuleExpr>();
+        private Stack<PLink_Root.MonitorNameList> monitorNameListStack = new Stack<PLink_Root.MonitorNameList>();
 
         class LocalVarStack
         {
@@ -447,6 +457,20 @@
                     if (PPTopDeclNames.funProto.Contains(name))
                     {
                         errorMessage = string.Format("A function prototype with name {0} already declared", name);
+                        error = true;
+                    }
+                    break;
+                case PProgramTopDecl.Module:
+                    if (PPTopDeclNames.moduleNames.Contains(name))
+                    {
+                        errorMessage = string.Format("A module with name {0} already declared", name);
+                        error = true;
+                    }
+                    break;
+                case PProgramTopDecl.Test:
+                    if (PPTopDeclNames.testNames.Contains(name))
+                    {
+                        errorMessage = string.Format("A test with name {0} already declared", name);
                         error = true;
                     }
                     break;
@@ -1178,6 +1202,147 @@
             crntGotoTargetName.Span = span;
         }
 
+        //Module helpers
+        private void PushModuleName(string name, Span nameSpan)
+        {
+            var moduleName = new PLink_Root.ModuleName();
+            moduleName.name = (PLink_Root.IArgType_ModuleName__0)MkString(name, nameSpan);
+            moduleName.Span = nameSpan;
+            moduleName.id = (PLink_Root.IArgType_ModuleName__1)MkUniqueId(nameSpan);
+            moduleExprStack.Push(moduleName);
+        }
+
+        private void PushComposeExpr(Span span)
+        {
+            var composeExpr = new PLink_Root.ComposeExpr();
+            composeExpr.Span = span;
+            Contract.Assert(moduleExprStack.Count >= 2);
+            var mod1 = moduleExprStack.Pop();
+            var mod2 = moduleExprStack.Pop();
+            composeExpr.left = (PLink_Root.IArgType_ComposeExpr__0)mod1;
+            composeExpr.right = (PLink_Root.IArgType_ComposeExpr__1)mod2;
+            composeExpr.id = (PLink_Root.IArgType_ComposeExpr__2)MkUniqueId(span);
+            moduleExprStack.Push(composeExpr);
+        }
+
+        private void PushSafeExpr(Span span)
+        {
+            var safeExpr = new PLink_Root.SafeExpr();
+            safeExpr.Span = span;
+            Contract.Assert(moduleExprStack.Count >= 1);
+            safeExpr.mod = (PLink_Root.IArgType_SafeExpr__0)moduleExprStack.Pop(); ;
+            safeExpr.id = (PLink_Root.IArgType_SafeExpr__1)MkUniqueId(span);
+            moduleExprStack.Push(safeExpr);
+        }
+
+        private PLink_Root.InterfaceType ConvertToInterfaceType(List<PLink_Root.NonNullEventName> events)
+        {
+            var interfaceTypeList = new Stack<PLink_Root.InterfaceType>();
+            var interfaceType = PLink_Root.MkInterfaceType();
+            interfaceType.ev = (PLink_Root.IArgType_InterfaceType__0)events[0];
+            interfaceType.tail = MkUserCnst(PLink_Root.UserCnstKind.NIL, events[0].Span);
+            interfaceTypeList.Push(interfaceType);
+            crntEventList.RemoveAt(0);
+            foreach (var str in events)
+            {
+                interfaceType = PLink_Root.MkInterfaceType();
+                interfaceType.ev = (PLink_Root.IArgType_InterfaceType__0)str;
+                interfaceType.tail = (PLink_Root.IArgType_InterfaceType__1)interfaceTypeList.Pop();
+                interfaceTypeList.Push(interfaceType);
+            }
+            return interfaceTypeList.Pop();
+        }
+
+        private void PushHideExpr(Span span)
+        {
+            var hideExpr = new PLink_Root.HideExpr();
+            hideExpr.Span = span;
+            Contract.Assert(moduleExprStack.Count >= 1);
+            hideExpr.mod = (PLink_Root.IArgType_HideExpr__1)moduleExprStack.Pop(); ;
+            Contract.Assert(crntEventList.Count >= 1);
+            //convert the string list to EventNameList
+            hideExpr.evtNames = ConvertToInterfaceType(crntEventList.Select(x => (PLink_Root.NonNullEventName)x).ToList());
+            hideExpr.id = (PLink_Root.IArgType_HideExpr__2)MkUniqueId(span);
+            moduleExprStack.Push(hideExpr);
+            //clear eventList
+            crntEventList.Clear();
+        }
+
+        private void PushAssumeExpr(Span span)
+        {
+            var assumeExpr = new PLink_Root.AssumeExpr();
+            assumeExpr.Span = span;
+            Contract.Assert(moduleExprStack.Count >= 1);
+            assumeExpr.mod = (PLink_Root.IArgType_AssumeExpr__1)moduleExprStack.Pop(); ;
+            Contract.Assert(monitorNameListStack.Count >= 1);
+            assumeExpr.monNames = monitorNameListStack.Pop();
+            assumeExpr.id = (PLink_Root.IArgType_AssumeExpr__2)MkUniqueId(span);
+            moduleExprStack.Push(assumeExpr);
+        }
+
+        private void PushAssertExpr(Span span)
+        {
+            var assertExpr = new PLink_Root.AssertExpr {Span = span};
+            Contract.Assert(moduleExprStack.Count >= 1);
+            assertExpr.mod = (PLink_Root.IArgType_AssertExpr__1)moduleExprStack.Pop(); ;
+            Contract.Assert(monitorNameListStack.Count >= 1);
+            assertExpr.monNames = monitorNameListStack.Pop();
+            assertExpr.id = (PLink_Root.IArgType_AssertExpr__2)MkUniqueId(span);
+            moduleExprStack.Push(assertExpr);
+        }
+
+        private void PushRenameExpr(string oldName, Span oldNameSpan, string newName, Span newNameSpan, Span span)
+        {
+            var renameExpr = new PLink_Root.RenameExpr {Span = span};
+            Contract.Assert(moduleExprStack.Count >= 1);
+            renameExpr.mod = (PLink_Root.IArgType_RenameExpr__2)moduleExprStack.Pop(); ;
+            renameExpr.mNames_PRIME1 = MkStringPLink(newName, newNameSpan);
+            renameExpr.mNames = MkStringPLink(oldName, oldNameSpan);
+            renameExpr.id = (PLink_Root.IArgType_RenameExpr__3)MkUniqueId(span);
+            moduleExprStack.Push(renameExpr);
+        }
+
+        private void PushExportExpr(string mName, string iName, Span mSpan, Span iSpan, Span span)
+        {
+            var exportExpr = new PLink_Root.ExportExpr();
+            exportExpr.Span = span;
+            Contract.Assert(moduleExprStack.Count >= 1);
+            exportExpr.mod = (PLink_Root.IArgType_ExportExpr__2)moduleExprStack.Pop(); ;
+            exportExpr.mName = MkStringPLink(mName, mSpan);
+            exportExpr.iName = MkStringPLink(iName, iSpan);
+            exportExpr.id = (PLink_Root.IArgType_ExportExpr__3)MkUniqueId(span);
+            moduleExprStack.Push(exportExpr);
+        }
+
+        private void PushMonitorName(string name, Span nameSpan, bool isLast)
+        {
+            var monNameList = PLink_Root.MkMonitorNameList();
+            monNameList.Span = nameSpan;
+            if (crntStringIdList.Any(e => (string)e.Symbol == name))
+            {
+                var errFlag = new Flag(
+                    SeverityKind.Error,
+                    nameSpan,
+                    Constants.BadSyntax.ToString($" item {name} listed multiple times in the list"),
+                    Constants.BadSyntax.Code,
+                    parseSource);
+                parseFailed = true;
+                parseFlags.Add(errFlag);
+            }
+            if (isLast)
+            {
+                monNameList.str = (PLink_Root.IArgType_MonitorNameList__0)MkString(name, nameSpan);
+                monNameList.tl = MkUserCnst(PLink_Root.UserCnstKind.NIL, nameSpan);
+                crntStringIdList.Clear();
+            }
+            else
+            {
+                Contract.Assert(monitorNameListStack.Count > 0);
+                monNameList.str = (PLink_Root.IArgType_MonitorNameList__0)MkString(name, nameSpan);
+                monNameList.tl = (PLink_Root.IArgType_MonitorNameList__1)monitorNameListStack.Pop();
+            }
+            monitorNameListStack.Push(monNameList);
+        }
         #endregion
 
         public void SetProgramIgnore()
@@ -2291,6 +2456,19 @@
         #endregion
 
         #region Node getters
+        private PLink_Root.ModuleDecl GetCurrentModuleDecl(Span span)
+        {
+            if (crntModuleDecl != null)
+            {
+                return crntModuleDecl;
+            }
+
+            crntModuleDecl = PLink_Root.MkModuleDecl();
+            crntModuleDecl.name = MkStringPLink(string.Empty, span);
+            crntModuleDecl.Span = span;
+            return crntModuleDecl;
+        }
+
         private P_Root.EventDecl GetCurrentEventDecl(Span span)
         {
             if (crntEventDecl != null)
@@ -2389,8 +2567,118 @@
         }
         #endregion
 
-        #region Helpers
-        private static bool IsSkipFun(P_Root.GroundTerm term)
+        private void AddToMachineNamesList(string name, Span span)
+        {
+            if (crntStringIdList.Any(e => ((string)e.Symbol == name)))
+            {
+                var errFlag = new Flag(
+                    SeverityKind.Error,
+                    span,
+                    Constants.BadSyntax.ToString(string.Format("Machine {0} listed multiple times in the list", name)),
+                    Constants.BadSyntax.Code,
+                    parseSource);
+                parseFailed = true;
+                parseFlags.Add(errFlag);
+            }
+            else
+            {
+                crntStringIdList.Add(MkString(name, span));
+            }
+        }
+
+
+        private void AddImplementationDecl(Span span)
+        {
+            Contract.Assert(moduleExprStack.Count == 1);
+            var impsDecl = PLink_Root.MkImplementationDecl();
+            impsDecl.Span = span;
+            impsDecl.mod = (PLink_Root.IArgType_ImplementationDecl__0)moduleExprStack.Pop();
+            impsDecl.id = (PLink_Root.IArgType_ImplementationDecl__1)MkUniqueId(span);
+            parseProgram.Add(impsDecl);
+        }
+
+        private void AddRefinementDeclaration(string name, Span nameSpan, Span span)
+        {
+            if (IsValidName(PProgramTopDecl.Test, name, nameSpan))
+            {
+                PPTopDeclNames.testNames.Add(name);
+            }
+            Contract.Assert(moduleExprStack.Count == 2);
+            var refinesDecl = PLink_Root.MkRefinementDecl();
+            refinesDecl.name = (PLink_Root.IArgType_RefinementDecl__0)MkString(name, nameSpan);
+            refinesDecl.Span = span;
+            refinesDecl.rhs = (PLink_Root.IArgType_RefinementDecl__2)moduleExprStack.Pop();
+            refinesDecl.lhs = (PLink_Root.IArgType_RefinementDecl__1)moduleExprStack.Pop();
+            parseProgram.Add(refinesDecl);
+        }
+
+        private void AddTestDeclaration(string name, Span nameSpan, Span span)
+        {
+            if (IsValidName(PProgramTopDecl.Test, name, nameSpan))
+            {
+                PPTopDeclNames.testNames.Add(name);
+            }
+            Contract.Assert(moduleExprStack.Count == 1);
+            var testDecl = PLink_Root.MkTestDecl();
+            testDecl.name = (PLink_Root.IArgType_TestDecl__0)MkString(name, nameSpan);
+            testDecl.Span = span;
+            testDecl.mod = (PLink_Root.IArgType_TestDecl__1)moduleExprStack.Pop();
+            parseProgram.Add(testDecl);
+        }
+
+        private void AddModuleDef(string name, Span nameSpan, Span span)
+        {
+            var moduleDef = PLink_Root.MkModuleDef();
+            moduleDef.Span = span;
+            moduleDef.name = MkStringPLink(name, nameSpan);
+            Contract.Assert(moduleExprStack.Count >= 1);
+            moduleDef.mod = (PLink_Root.IArgType_ModuleDef__1)moduleExprStack.Pop();
+            if (IsValidName(PProgramTopDecl.Module, name, nameSpan))
+            {
+                PPTopDeclNames.moduleNames.Add(name);
+            }
+            parseProgram.ModuleDef.Add(moduleDef);
+        }
+
+        private void AddPrivatesList(Span span = default(Span))
+        {
+            Contract.Assert(crntEventList.Count > 0);
+            foreach (var ev in crntEventList)
+            {
+                var rec = PLink_Root.MkModulePrivateEvents(GetCurrentModuleDecl(span), (PLink_Root.IArgType_ModulePrivateEvents__1)ev);
+                rec.Span = ev.Span;
+                parseProgram.Add(rec);
+            }
+            crntEventList.Clear();
+        }
+
+        private void AddModuleDecl(string name, Span nameSpan, Span span)
+        {
+            var moduleDecl = GetCurrentModuleDecl(span);
+            moduleDecl.Span = span;
+            moduleDecl.name = MkStringPLink(name, nameSpan);
+            moduleDecl.id = (PLink_Root.IArgType_ModuleDecl__1)MkUniqueId(span);
+            //add the module decl
+            if (IsValidName(PProgramTopDecl.Module, name, nameSpan))
+            {
+                PPTopDeclNames.moduleNames.Add(name);
+            }
+            parseProgram.Add(moduleDecl);
+
+            foreach (var machine in crntStringIdList)
+            {
+                var moduleContains = PLink_Root.MkModuleContainsMachine();
+                moduleContains.mod = (PLink_Root.IArgType_ModuleContainsMachine__0)moduleDecl;
+                moduleContains.mach = (PLink_Root.IArgType_ModuleContainsMachine__1)machine;
+                parseProgram.Add(moduleContains);
+            }
+            crntStringIdList.Clear();
+            crntModuleDecl = null;
+        }
+
+    
+    #region Helpers
+    private static bool IsSkipFun(P_Root.GroundTerm term)
         {
             P_Root.NulStmt nulStmt = null;
             if (term is P_Root.AnonFunDecl)
@@ -2448,6 +2736,13 @@
             return bt;
         }
 
+        private PLink_Root.UserCnst MkUserCnst(PLink_Root.UserCnstKind kind, Span span)
+        {
+            var cnst = PLink_Root.MkUserCnst(kind);
+            cnst.Span = span;
+            return cnst;
+        }
+
         private P_Root.UserCnst MkUserCnst(P_Root.UserCnstKind kind, Span span)
         {
             var cnst = P_Root.MkUserCnst(kind);
@@ -2462,12 +2757,20 @@
             return str;
         }
 
+        private PLink_Root.StringCnst MkStringPLink(string s, Span span)
+        {
+            var str = PLink_Root.MkString(s);
+            str.Span = span;
+            return str;
+        }
+
         private P_Root.RealCnst MkNumeric(int i, Span span)
         {
             var num = P_Root.MkNumeric(i);
             num.Span = span;
             return num;
         }
+
 
         private bool ParseFormatString(string s, int numArgs, Span span, out List<string> segments, out List<int> formatArgs)
         {
@@ -2575,9 +2878,23 @@
             crntStateNames.Clear();
             crntFunNames.Clear();
             crntVarNames.Clear();
+            moduleExprStack.Clear();
+            monitorNameListStack.Clear();
+            crntModuleDecl = null;
         }
         #endregion
     }
+
+    internal partial class DummyTokenParser : ShiftReduceParser<LexValue, LexLocation>
+    {
+        public DummyTokenParser()
+            : base(new Scanner())
+        {
+            
+        }
+    }
 }
+
+
 
 

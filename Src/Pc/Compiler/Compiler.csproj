@@ -234,12 +234,10 @@
     <Compile Include="IProfiler.cs" />
     <Compile Include="LivenessOption.cs" />
     <Compile Include="LocalVariableInfo.cs" />
-    <Compile Include="LProgram.cs" />
     <Compile Include="MachineInfo.cs" />
     <Compile Include="PToCSharpCompiler.MkFunctionDecl.cs" />
     <Compile Include="PToCSharpCompiler.MkMachineClass.cs" />
     <Compile Include="NullProfiler.cs" />
-    <Compile Include="Parser\LParser.cs" />
     <Compile Include="Parser\PParser.cs" />
     <Compile Include="Parser\ShiftReduceParserCode.cs" />
     <Compile Include="PData.cs" />
@@ -291,7 +289,6 @@
   <ItemGroup>
     <MPLexCompile Include="Parser\Lexer.lex" />
     <MPPGCompileParser Include="Parser\PParser.y" />
-    <MPPGCompileTempParser Include="Parser\LParser.y" />
     <MPPGCompileToken Include="Parser\Tokens.y" />
   </ItemGroup>
   <ItemGroup>
@@ -375,17 +372,12 @@
     <!--Run the command line tool that generates the cs files.-->
     <Exec Command="$(GPPGCmd) -report -verbose -conflicts @(MPPGCompileToken) &gt; @(MPPGCompileToken->'$(IntermediateOutputPath)%(FileName).g.cs')" />
     <Exec Command="$(GPPGCmd) -babel -gplex -report -verbose -conflicts @(MPPGCompileParser) &gt; @(MPPGCompileParser->'$(IntermediateOutputPath)%(FileName).g.cs')" />
-    <Exec Command="$(GPPGCmd) -report -verbose -conflicts @(MPPGCompileTempParser) &gt; @(MPPGCompileTempParser->'$(IntermediateOutputPath)%(FileName).g.cs')" />
     <!--Add the generated files to the list of the files to compile.-->
-    <CreateItem Include="@(MPPGCompileParser->'$(IntermediateOutputPath)%(FileName).g.cs')">
-      <Output TaskParameter="Include" ItemName="Compile" />
-      <Output TaskParameter="Include" ItemName="FileWrites" />
-    </CreateItem>
     <CreateItem Include="@(MPPGCompileToken->'$(IntermediateOutputPath)%(FileName).g.cs')">
       <Output TaskParameter="Include" ItemName="Compile" />
       <Output TaskParameter="Include" ItemName="FileWrites" />
     </CreateItem>
-    <CreateItem Include="@(MPPGCompileTempParser->'$(IntermediateOutputPath)%(FileName).g.cs')">
+    <CreateItem Include="@(MPPGCompileParser->'$(IntermediateOutputPath)%(FileName).g.cs')">
       <Output TaskParameter="Include" ItemName="Compile" />
       <Output TaskParameter="Include" ItemName="FileWrites" />
     </CreateItem>

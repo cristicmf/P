@@ -845,41 +845,7 @@
             return parseTask.Result.Program;
         }
 
-        public bool ParseLinkProgram(string inputFileName, out LProgram parsedProgram, out ProgramName RootProgramName)
-        {
-            parsedProgram = new LProgram();
-            try
-            {
-                RootProgramName = new ProgramName(Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, inputFileName)));
-            }
-            catch (Exception e)
-            {
-                errorReporter.AddFlag(
-                    new Flag(
-                        SeverityKind.Error,
-                        default(Span),
-                        Constants.BadFile.ToString($"{inputFileName} : {e.Message}"),
-                        Constants.BadFile.Code));
-                RootProgramName = null;
-                return false;
-            }
-
-            LProgramTopDeclNames topDeclNames = new LProgramTopDeclNames();
-            List<Flag> parserFlags;
-            var parser = new LParser();
-            var result = parser.ParseFile(RootProgramName, topDeclNames, parsedProgram, errorReporter.idToSourceInfo, out parserFlags);
-            foreach (Flag f in parserFlags)
-            {
-                errorReporter.AddFlag(f);
-            }
-            if (!result)
-            {
-                RootProgramName = null;
-                return false;
-            }
-
-            return true;
-        }
+       
 
         public bool Link(ICompilerOutput log, CommandLineOptions options)
         {
@@ -903,46 +869,6 @@
 
                 using (this.Profiler.Start("Linker parsing and installing", Path.GetFileName(plinkFile)))
                 {
-                    LProgram linkProgram;
-                    ProgramName RootProgramName;
-                    AST<Model> RootModel = null;
-                    if (options.inputFileNames.Count == 1)
-                    {
-                        if (!ParseLinkProgram(plinkFile, out linkProgram, out RootProgramName))
-                        {
-                            errorReporter.PrintErrors(Log, Options);
-                            Log.WriteMessage("Parsing failed", SeverityKind.Error);
-                            return false;
-                        }
-
-                        //// Step 0. Load all dependencies of PLink.4ml in order
-                        LoadManifestProgram("C.4ml");
-                        LoadManifestProgram("PLink.4ml");
-
-                        //// Step 1. Serialize the parsed object graph into a Formula model and install it. Should not fail.
-                        var mkModelResult = Factory.Instance.MkModel(
-                            MkSafeModuleName(RootProgramName.ToString()),
-                            PLinkDomain,
-                            linkProgram.Terms,
-                            out RootModel,
-                            null,
-                            MkReservedModuleLocation(PLinkDomain),
-                            ComposeKind.None);
-
-                        Contract.Assert(mkModelResult);
-
-                        AST<Program> modelProgram = MkProgWithSettings(RootProgramName, new KeyValuePair<string, object>(Configuration.Proofs_KeepLineNumbersSetting, "TRUE"));
-                        RootModel.FindAll(
-                            new NodePred[]
-                            {
-                            NodePredFactory.Instance.Star,
-                            NodePredFactory.Instance.MkPredicate(NodeKind.ModelFact)
-                            },
-                            (path, n) =>
-                            {
-                                linkModel = Factory.Instance.AddFact(linkModel, (AST<ModelFact>)Factory.Instance.ToAST(n));
-                            });
-                    }
                     foreach (var fileName in options.dependencies)
                     {
                         var program = ParseFormulaFile(fileName);

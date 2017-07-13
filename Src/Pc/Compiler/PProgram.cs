@@ -9,9 +9,8 @@ namespace Microsoft.Pc
     {
         public bool IgnoreDecl;
 
-        public PProgram(List<PLink_Root.ModuleContainsMachine> moduleContainsMachine)
+        public PProgram()
         {
-            ModuleContainsMachine = moduleContainsMachine;
             TypeDefs = new List<P_Root.TypeDef>();
             EnumTypeDefs = new List<P_Root.EnumTypeDef>();
             ModelTypes = new List<P_Root.ModelType>();
@@ -40,6 +39,14 @@ namespace Microsoft.Pc
             IgnoreDecl = false;
             FunProtoCreates = new List<P_Root.FunProtoCreatesDecl>();
             AnyTypeDecl = new List<P_Root.AnyTypeDecl>();
+            ModuleContainsMachine = new List<PLink_Root.ModuleContainsMachine>();
+            ModuleDecl = new List<PLink_Root.ModuleDecl>();
+            ModulePrivateEvents = new List<PLink_Root.ModulePrivateEvents>();
+            ModuleName = new List<PLink_Root.ModuleName>();
+            TestDecl = new List<PLink_Root.TestDecl>();
+            RefinementDecl = new List<PLink_Root.RefinementDecl>();
+            ImplementationDecl = new List<PLink_Root.ImplementationDecl>();
+            ModuleDef = new List<PLink_Root.ModuleDef>();
         }
 
         public List<P_Root.AnyTypeDecl> AnyTypeDecl { get; }
@@ -201,37 +208,28 @@ namespace Microsoft.Pc
                     yield return d;
 
                 foreach (var mc in ModuleContainsMachine)
-                {
                     yield return mc;
-                }
+
                 foreach (var mn in ModuleName)
-                {
                     yield return mn;
-                }
+
                 foreach (var mp in ModulePrivateEvents)
-                {
                     yield return mp;
-                }
+
                 foreach (var md in ModuleDecl)
-                {
                     yield return md;
-                }
+
                 foreach (var td in TestDecl)
-                {
                     yield return td;
-                }
+
                 foreach (var rd in RefinementDecl)
-                {
                     yield return rd;
-                }
+
                 foreach (var id in ImplementationDecl)
-                {
                     yield return id;
-                }
+
                 foreach (var md in ModuleDef)
-                {
                     yield return md;
-                }
             }
         }
 
@@ -293,6 +291,22 @@ namespace Microsoft.Pc
                 DependsOn.Add((P_Root.DependsOn) item);
             else if (item is P_Root.FunProtoCreatesDecl)
                 FunProtoCreates.Add((P_Root.FunProtoCreatesDecl) item);
+            else if (item is PLink_Root.ModuleContainsMachine)
+                ModuleContainsMachine.Add((PLink_Root.ModuleContainsMachine) item);
+            else if (item is PLink_Root.ModuleDecl)
+                ModuleDecl.Add((PLink_Root.ModuleDecl) item);
+            else if (item is PLink_Root.ModulePrivateEvents)
+                ModulePrivateEvents.Add((PLink_Root.ModulePrivateEvents) item);
+            else if (item is PLink_Root.ModuleName)
+                ModuleName.Add((PLink_Root.ModuleName)item);
+            else if (item is PLink_Root.TestDecl)
+                TestDecl.Add((PLink_Root.TestDecl)item);
+            else if (item is PLink_Root.RefinementDecl)
+                RefinementDecl.Add((PLink_Root.RefinementDecl)item);
+            else if (item is PLink_Root.ImplementationDecl)
+                ImplementationDecl.Add((PLink_Root.ImplementationDecl)item);
+            else if (item is PLink_Root.ModuleDef)
+                ModuleDef.Add((PLink_Root.ModuleDef)item);
             else
                 throw new Exception("Cannot add into the Program : " + item);
         }
